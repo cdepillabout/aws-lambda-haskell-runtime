@@ -20,6 +20,7 @@ library:
   dependencies:
     - aeson
     - bytestring
+    - base64-bytestring
     - http-client
     - http-types
     - template-haskell

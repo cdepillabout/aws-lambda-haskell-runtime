@@ -32,11 +32,21 @@ import System.IO (hFlush, stderr, stdout)
 -- results. This is called from the layer's @main@ function.
 runLambda :: forall context handlerType. IO context -> Runtime.RunCallback handlerType context -> IO ()
 runLambda initializeCustomContext callback = do
+  hFlush stdout
+  hFlush stderr
+  putStrLn "Aws.Lambda.Runtime.runLambda: start"
+  hFlush stdout
+  hFlush stderr
   manager <- Http.newManager httpManagerSettings
   customContext <- initializeCustomContext
   customContextRef <- newIORef customContext
   context <- Context.initialize @context customContextRef `catch` errorParsing `catch` variableNotSet
   forever $ do
+    hFlush stdout
+    hFlush stderr
+    putStrLn "Aws.Lambda.Runtime.runLambda: in forever, start"
+    hFlush stdout
+    hFlush stderr
     lambdaApi <- Environment.apiEndpoint `catch` variableNotSet
     event <- ApiInfo.fetchEvent manager lambdaApi `catch` errorParsing
 
@@ -69,6 +79,11 @@ invokeAndRun ::
   Context.Context context ->
   IO ()
 invokeAndRun callback manager lambdaApi event context = do
+  hFlush stdout
+  hFlush stderr
+  putStrLn "Aws.Lambda.Runtime.invokeAndRun: start"
+  hFlush stdout
+  hFlush stderr
   result <- invokeWithCallback callback event context
 
   Publish.result result lambdaApi context manager
@@ -82,6 +97,11 @@ invokeWithCallback ::
   Context.Context context ->
   IO (Runtime.LambdaResult handlerType)
 invokeWithCallback callback event context = do
+  hFlush stdout
+  hFlush stderr
+  putStrLn "Aws.Lambda.Runtime.invokeWithCallback: start"
+  hFlush stdout
+  hFlush stderr
   handlerName <- Runtime.HandlerName <$> Environment.handlerName
   let lambdaOptions =
         Runtime.LambdaOptions

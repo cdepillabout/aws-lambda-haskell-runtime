@@ -58,12 +58,16 @@ import Control.Monad.State as State
     StateT (..),
     modify,
   )
-import Data.Aeson (FromJSON)
+import Data.Aeson (FromJSON, eitherDecode, Value)
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Text as Text
 import Data.Typeable (Typeable)
 import GHC.IO.Handle.FD (stderr)
 import GHC.IO.Handle.Text (hPutStr)
+import Debug.Trace (traceShowM, traceM)
+import System.IO (hFlush)
+import System.IO (stdout)
+import qualified Data.ByteString.Lazy.Char8 as B
 
 type Handlers handlerType m context request response error =
   HM.HashMap HandlerName (Handler handlerType m context request response error)
@@ -114,6 +118,11 @@ runLambdaHaskellRuntime ::
   HandlersM handlerType m context request response error () ->
   IO ()
 runLambdaHaskellRuntime options initializeContext mToIO initHandlers = do
+  hFlush stdout
+  hFlush stderr
+  putStrLn "Aws.Lambda.Setup.runLambdaHaskellRuntime: start"
+  hFlush stdout
+  hFlush stderr
   handlers <- fmap snd . flip runStateT HM.empty . runHandlersM $ initHandlers
   runLambda initializeContext (run options mToIO handlers)
 
@@ -125,6 +134,11 @@ run ::
   LambdaOptions context ->
   IO (Either (LambdaError handlerType) (LambdaResult handlerType))
 run dispatcherOptions mToIO handlers (LambdaOptions eventObject functionHandler _executionUuid contextObject) = do
+  hFlush stdout
+  hFlush stderr
+  putStrLn "Aws.Lambda.Setup.run: start"
+  hFlush stdout
+  hFlush stderr
   let asIOCallbacks = HM.map (mToIO . handlerToCallback dispatcherOptions eventObject contextObject) handlers
   case HM.lookup functionHandler asIOCallbacks of
     Just handlerToCall -> handlerToCall
@@ -176,13 +190,19 @@ handlerToCallback dispatcherOptions rawEventObject context handlerToCall =
                 <$> handler request context
             Left err -> return . Left . StandaloneLambdaError . toStandaloneLambdaResponse $ err
         APIGatewayHandler handler -> do
+          traceM $ "Aws.Lambda.Setup.handlerToCallback: about to decode ApiGatewayRequest: " <> B.unpack rawEventObject
+          let val = eitherDecode rawEventObject :: Either String Value
+          traceM $ "Aws.Lambda.Setup.handlerToCallback: decode rawEventObject as Value: " <> show val
           case decodeObj @(ApiGatewayRequest request) rawEventObject of
-            Right request ->
+            Right request -> do
+              traceM "Aws.Lambda.Setup.handlerToCallback: about to call api gateway handler"
               either
                 (Left . APIGatewayLambdaError . fmap toApiGatewayResponseBody)
                 (Right . APIGatewayResult . fmap toApiGatewayResponseBody)
                 <$> handler request context
-            Left err -> apiGatewayErr 400 . toApiGatewayResponseBody . Text.pack . show $ err
+            Left err -> do
+              traceM $ "Aws.Lambda.Setup.handlerToCallback: error in decoding ApiGatewayRequest: " <> show err
+              apiGatewayErr 400 . toApiGatewayResponseBody . Text.pack . show $ err
         ALBHandler handler ->
           case decodeObj @(ALBRequest request) rawEventObject of
             Right request ->
